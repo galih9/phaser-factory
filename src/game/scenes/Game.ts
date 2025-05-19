@@ -2,7 +2,7 @@ import { EventBus } from "../EventBus";
 import { Scene } from "phaser";
 import { Item, ItemType } from '../types/Items';
 import { ItemService } from '../services/ItemService';
-import { TIMER_CONFIG, COLORS, PLAYER_SPEED } from '../constants/GameConfig';
+import { TIMER_CONFIG, COLORS, PLAYER_SPEED as speed } from '../constants/GameConfig';
 
 export class Game extends Scene {
     camera: Phaser.Cameras.Scene2D.Camera;
@@ -19,14 +19,17 @@ export class Game extends Scene {
     private carryArea: Phaser.GameObjects.Rectangle;
     private dropArea: Phaser.GameObjects.Rectangle;
     private processedArea: Phaser.GameObjects.Rectangle;
+    private sellingArea: Phaser.GameObjects.Rectangle;
 
     private playerInCarryArea: boolean = false;
     private playerInDropArea: boolean = false;
     private playerInProcessedArea: boolean = false;
+    private playerInSellingArea: boolean = false;
 
     private playerCounter: Phaser.GameObjects.Text;
     private droppedCounter: Phaser.GameObjects.Text;
     private processedAreaCounter: Phaser.GameObjects.Text;
+    private coinText: Phaser.GameObjects.Text;
 
     private counterTimer?: Phaser.Time.TimerEvent;
 
@@ -35,6 +38,8 @@ export class Game extends Scene {
     private playerItems: Item[] = [];
     private droppedItems: Item[] = [];
     private processedItems: Item[] = [];
+
+    private coins: number = 0;
 
     private readonly TEXT_OFFSET_Y = -40;
 
@@ -67,6 +72,13 @@ export class Game extends Scene {
         this.gameText = this.add.text(100, 100, "Start gathering items!", {
             fontSize: "15px",
             color: "#000000",
+        });
+
+        // Add coin counter
+        this.coinText = this.add.text(20, 20, "Coins: 0", {
+            fontSize: "20px",
+            color: "#000000",
+            fontStyle: "bold"
         });
     }
 
@@ -112,6 +124,15 @@ export class Game extends Scene {
                 color: "#ffffff",
             })
             .setOrigin(0.5, 0.5);
+
+        // create sellingArea
+        this.sellingArea = this.add.rectangle(700, 384, 50, 50, 0xfaf741);
+        this.physics.add.existing(this.sellingArea, false); // Set to false for dynamic body
+        const sellingAreaBody = this.sellingArea.body as Phaser.Physics.Arcade.Body;
+        sellingAreaBody.setImmovable(true);
+        // Make it a sensor so it doesn't block movement
+        sellingAreaBody.allowGravity = false;
+        sellingAreaBody.moves = false;
     }
 
     private setupPlayer() {
@@ -141,6 +162,24 @@ export class Game extends Scene {
         this.setupCarryAreaOverlap();
         this.setupProcessedAreaOverlap();
         this.setupDropAreaOverlap();
+        this.setupSellingAreaOverlap();
+    }
+
+    private setupSellingAreaOverlap() {
+        this.physics.add.overlap(
+            this.player,
+            this.sellingArea,
+            () => {
+                if (!this.playerInSellingArea && this.playerItems.length > 0) {
+                    this.playerInSellingArea = true;
+                    this.gameText.setText("Selling items");
+                    this.sellItems();
+                }
+            },
+            undefined,
+            this
+        );
+
     }
 
     private setupCarryAreaOverlap() {
@@ -272,10 +311,23 @@ export class Game extends Scene {
         }
     }
 
+    private sellItems() {
+        const rawItems = this.playerItems.filter(item => item.type === ItemType.RAW);
+        const processedItems = this.playerItems.filter(item => item.type === ItemType.PROCESSED);
+        
+        const rawValue = rawItems.length * 5;
+        const processedValue = processedItems.length * 15;
+        
+        this.coins += (rawValue + processedValue);
+        this.coinText.setText(`Coins: ${this.coins}`);
+        
+        // Clear player's inventory
+        this.playerItems = [];
+        this.updateCounterTexts();
+    }
+
     update() {
         if (!this.moveKeys) return;
-
-        const speed = 200;
         const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
 
         // Handle movement with velocity instead of position
@@ -301,6 +353,12 @@ export class Game extends Scene {
             this.playerInDropArea = false;
             this.gameText.setText("Outside drop area");
             this.stopTimer();
+        }
+
+        // Add selling area exit check
+        if (this.playerInSellingArea && !this.physics.overlap(this.player, this.sellingArea)) {
+            this.playerInSellingArea = false;
+            this.gameText.setText("Outside selling area");
         }
 
         if (this.moveKeys.W?.isDown) {
