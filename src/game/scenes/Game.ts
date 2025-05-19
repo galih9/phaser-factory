@@ -33,8 +33,6 @@ export class Game extends Scene {
 
     private counterTimer?: Phaser.Time.TimerEvent;
 
-    private isProcessing: boolean = false;
-
     private playerItems: Item[] = [];
     private droppedItems: Item[] = [];
     private processedItems: Item[] = [];
@@ -210,7 +208,7 @@ export class Game extends Scene {
             this.player,
             this.processedArea,
             () => {
-                if (!this.playerInProcessedArea && this.processedItems.length > 0) {
+                if (!this.playerInProcessedArea) {
                     this.playerInProcessedArea = true;
                     this.gameText.setText("Picking processed items");
                     if (!this.counterTimer) {
@@ -285,27 +283,35 @@ export class Game extends Scene {
             this.updateCounterTexts();
             this.createFloatingText(this.player.x, this.player.y, `-1 ${item.type}`, '#ff0000');
 
-            if (!this.isProcessing) {
-                this.processItems();
-            }
+            // Start processing immediately without checking isProcessing
+            this.processItems();
         } else {
             this.stopTimer();
         }
     }
 
     private processItems() {
-        if (this.droppedItems.length > 0 && !this.isProcessing) {
-            this.isProcessing = true;
+        // Remove the isProcessing check and flag
+        if (this.droppedItems.length > 0) {
+            // Start a new timer for each item
             this.time.delayedCall(
                 TIMER_CONFIG.PROCESS_DELAY,
                 () => {
-                    const item = this.droppedItems.shift()!;
-                    this.processedItems.push(ItemService.processItem(item));
-                    this.updateCounterTexts();
-                    this.isProcessing = false;
-
                     if (this.droppedItems.length > 0) {
-                        this.processItems();
+                        const item = this.droppedItems.shift()!;
+                        this.processedItems.push(ItemService.processItem(item));
+                        this.updateCounterTexts();
+                        // Create a floating text to show processing completion
+                        this.createFloatingText(
+                            this.processedArea.x,
+                            this.processedArea.y,
+                            'Item Processed!',
+                            '#00ff00'
+                        );
+                        // Process next item if any
+                        if (this.droppedItems.length > 0) {
+                            this.processItems();
+                        }
                     }
                 },
                 [],
