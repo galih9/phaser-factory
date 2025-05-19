@@ -256,6 +256,7 @@ export class Game extends Scene {
             const item = this.processedItems.pop()!;
             this.playerItems.push(item);
             this.updateCounterTexts();
+            this.createFloatingText(this.player.x, this.player.y, `+1 ${item.type}`, '#00ff00');
         } else {
             this.stopTimer();
         }
@@ -274,6 +275,7 @@ export class Game extends Scene {
     private carryItem(type: ItemType) {
         this.playerItems.push(ItemService.createItem(type));
         this.updateCounterTexts();
+        this.createFloatingText(this.player.x, this.player.y, `+1 ${type}`, '#00ff00');
     }
 
     private dropItem() {
@@ -281,6 +283,7 @@ export class Game extends Scene {
             const item = this.playerItems.pop()!;
             this.droppedItems.push(item);
             this.updateCounterTexts();
+            this.createFloatingText(this.player.x, this.player.y, `-1 ${item.type}`, '#ff0000');
 
             if (!this.isProcessing) {
                 this.processItems();
@@ -318,12 +321,39 @@ export class Game extends Scene {
         const rawValue = rawItems.length * 5;
         const processedValue = processedItems.length * 15;
         
+        // Show floating text for coins earned
+        if (rawValue > 0) {
+            this.createFloatingText(this.player.x - 20, this.player.y, `+${rawValue} coins`, '#ffd700');
+        }
+        if (processedValue > 0) {
+            this.createFloatingText(this.player.x + 20, this.player.y, `+${processedValue} coins`, '#ffd700');
+        }
+        
         this.coins += (rawValue + processedValue);
         this.coinText.setText(`Coins: ${this.coins}`);
         
         // Clear player's inventory
         this.playerItems = [];
         this.updateCounterTexts();
+    }
+
+    private createFloatingText(x: number, y: number, message: string, color: string = '#000000') {
+        const text = this.add.text(x, y + this.TEXT_OFFSET_Y - 30, message, {
+            fontSize: '16px',
+            color: color,
+            fontStyle: 'bold'
+        }).setOrigin(0.5, 0.5);
+
+        this.tweens.add({
+            targets: text,
+            y: y - 50,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                text.destroy();
+            }
+        });
     }
 
     update() {
