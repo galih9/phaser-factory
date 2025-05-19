@@ -1,14 +1,8 @@
 import { EventBus } from "../EventBus";
 import { Scene } from "phaser";
-
-enum ItemType {
-    RAW = "RAW",
-    PROCESSED = "PROCESSED",
-}
-
-interface Item {
-    type: ItemType;
-}
+import { Item, ItemType } from '../types/Items';
+import { ItemService } from '../services/ItemService';
+import { TIMER_CONFIG, COLORS, PLAYER_SPEED } from '../constants/GameConfig';
 
 export class Game extends Scene {
     camera: Phaser.Cameras.Scene2D.Camera;
@@ -42,6 +36,8 @@ export class Game extends Scene {
     private droppedItems: Item[] = [];
     private processedItems: Item[] = [];
 
+    private readonly TEXT_OFFSET_Y = -40;
+
     constructor() {
         super({
             key: "Game",
@@ -55,14 +51,27 @@ export class Game extends Scene {
     }
 
     create() {
+        this.setupCamera();
+        this.setupAreas();
+        this.setupPlayer();
+        this.setupOverlaps();
+        this.setupInput();
+        EventBus.emit("current-scene-ready", this);
+    }
+
+    private setupCamera() {
         this.camera = this.cameras.main;
-        this.camera.setBackgroundColor(0xe6e6e6);
-
-        this.gameText = this.add.text(100, 100, "Player is outside box2", {
-            fontSize: 15,
-            color: "#ff0000",
+        this.camera.setBackgroundColor(COLORS.BACKGROUND);
+        
+        // Initialize gameText
+        this.gameText = this.add.text(100, 100, "Start gathering items!", {
+            fontSize: "15px",
+            color: "#000000",
         });
+    }
 
+    private setupAreas() {
+        // Create and setup areas (carryArea, processedArea, dropArea)
         // create carryarea with physics as sensor
         this.carryArea = this.add.rectangle(300, 384, 50, 50, 0x0000ff);
         this.physics.add.existing(this.carryArea, false); // Set to false for dynamic body
@@ -103,19 +112,20 @@ export class Game extends Scene {
                 color: "#ffffff",
             })
             .setOrigin(0.5, 0.5);
+    }
 
-        // Create player as a physics rectangle
-        this.player = this.add.rectangle(512, 384, 32, 32, 0xff0000);
+    private setupPlayer() {
+        this.player = this.add.rectangle(512, 384, 32, 32, COLORS.PLAYER);
         this.physics.add.existing(this.player, false);
         (this.player.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(
             true
         );
 
-        // Update counter text centered on player
+        // Update counter text centered on player with offset
         this.playerCounter = this.add
-            .text(this.player.x, this.player.y, "RAW: 0", {
+            .text(this.player.x, this.player.y + this.TEXT_OFFSET_Y, "RAW: 0", {
                 fontSize: "16px",
-                color: "#ffffff",
+                color: "#000000",
             })
             .setOrigin(0.5, 0.5);
 
@@ -125,10 +135,15 @@ export class Game extends Scene {
 
         // Add collision between player and box
         this.physics.add.collider(this.player, this.box);
+    }
 
-        // Replace all overlap detections with these:
+    private setupOverlaps() {
+        this.setupCarryAreaOverlap();
+        this.setupProcessedAreaOverlap();
+        this.setupDropAreaOverlap();
+    }
 
-        // Carry area - RAW items
+    private setupCarryAreaOverlap() {
         this.physics.add.overlap(
             this.player,
             this.carryArea,
@@ -149,8 +164,9 @@ export class Game extends Scene {
             undefined,
             this
         );
+    }
 
-        // Processed area - PROCESSED items
+    private setupProcessedAreaOverlap() {
         this.physics.add.overlap(
             this.player,
             this.processedArea,
@@ -171,8 +187,9 @@ export class Game extends Scene {
             undefined,
             this
         );
+    }
 
-        // Add overlap detection for drop area
+    private setupDropAreaOverlap() {
         this.physics.add.overlap(
             this.player,
             this.dropArea,
@@ -193,29 +210,6 @@ export class Game extends Scene {
             undefined,
             this
         );
-
-        // Setup WASD keys with null check
-        if (this.input.keyboard) {
-            this.moveKeys = this.input.keyboard.addKeys({
-                W: Phaser.Input.Keyboard.KeyCodes.W,
-                S: Phaser.Input.Keyboard.KeyCodes.S,
-                A: Phaser.Input.Keyboard.KeyCodes.A,
-                D: Phaser.Input.Keyboard.KeyCodes.D,
-            }) as {
-                W: Phaser.Input.Keyboard.Key;
-                S: Phaser.Input.Keyboard.Key;
-                A: Phaser.Input.Keyboard.Key;
-                D: Phaser.Input.Keyboard.Key;
-            };
-        } else {
-            console.warn("Keyboard input is not available");
-        }
-
-        // Remove the template text and reduce background opacity
-        this.background = this.add.image(512, 384, "background");
-        this.background.setAlpha(0.2);
-
-        EventBus.emit("current-scene-ready", this);
     }
 
     private pickProcessedItem = () => {
@@ -229,22 +223,17 @@ export class Game extends Scene {
     }
 
     private updateCounterTexts() {
-        const rawCount = (items: Item[]) =>
-            items.filter((i) => i.type === ItemType.RAW).length;
-        const processedCount = (items: Item[]) =>
-            items.filter((i) => i.type === ItemType.PROCESSED).length;
+        const playerCounts = ItemService.countItems(this.playerItems);
+        const droppedCounts = ItemService.countItems(this.droppedItems);
+        const processedCounts = ItemService.countItems(this.processedItems);
 
-        this.playerCounter.setText(
-            `RAW: ${rawCount(this.playerItems)} PROC: ${processedCount(this.playerItems)}`
-        );
-        this.droppedCounter.setText(`RAW: ${rawCount(this.droppedItems)}`);
-        this.processedAreaCounter.setText(
-            `PROCESSED: ${processedCount(this.processedItems)}`
-        );
+        this.playerCounter.setText(ItemService.formatCounterText(playerCounts));
+        this.droppedCounter.setText(`RAW: ${droppedCounts.raw}`);
+        this.processedAreaCounter.setText(`PROCESSED: ${processedCounts.processed}`);
     }
 
-    private carryItem(item: ItemType) {
-        this.playerItems.push({ type: item });
+    private carryItem(type: ItemType) {
+        this.playerItems.push(ItemService.createItem(type));
         this.updateCounterTexts();
     }
 
@@ -255,31 +244,26 @@ export class Game extends Scene {
             this.updateCounterTexts();
 
             if (!this.isProcessing) {
-                this.checkAndProcessItems();
+                this.processItems();
             }
         } else {
-            if (this.counterTimer) {
-                this.counterTimer.destroy();
-                this.counterTimer = undefined;
-            }
+            this.stopTimer();
         }
     }
 
-    private checkAndProcessItems() {
+    private processItems() {
         if (this.droppedItems.length > 0 && !this.isProcessing) {
             this.isProcessing = true;
             this.time.delayedCall(
-                1500,
+                TIMER_CONFIG.PROCESS_DELAY,
                 () => {
-                    // Process one item
                     const item = this.droppedItems.shift()!;
-                    item.type = ItemType.PROCESSED;
-                    this.processedItems.push(item);
+                    this.processedItems.push(ItemService.processItem(item));
                     this.updateCounterTexts();
                     this.isProcessing = false;
 
                     if (this.droppedItems.length > 0) {
-                        this.checkAndProcessItems();
+                        this.processItems();
                     }
                 },
                 [],
@@ -297,8 +281,8 @@ export class Game extends Scene {
         // Handle movement with velocity instead of position
         playerBody.setVelocity(0);
 
-        // Update counter position to follow player
-        this.playerCounter.setPosition(this.player.x, this.player.y);
+        // Update counter position to follow player with offset
+        this.playerCounter.setPosition(this.player.x, this.player.y + this.TEXT_OFFSET_Y);
 
         // Update area checks:
         if (this.playerInCarryArea && !this.physics.overlap(this.player, this.carryArea)) {
@@ -337,6 +321,24 @@ export class Game extends Scene {
         if (this.counterTimer) {
             this.counterTimer.destroy();
             this.counterTimer = undefined;
+        }
+    }
+
+    private setupInput() {
+        if (this.input.keyboard) {
+            this.moveKeys = this.input.keyboard.addKeys({
+                W: Phaser.Input.Keyboard.KeyCodes.W,
+                S: Phaser.Input.Keyboard.KeyCodes.S,
+                A: Phaser.Input.Keyboard.KeyCodes.A,
+                D: Phaser.Input.Keyboard.KeyCodes.D,
+            }) as {
+                W: Phaser.Input.Keyboard.Key;
+                S: Phaser.Input.Keyboard.Key;
+                A: Phaser.Input.Keyboard.Key;
+                D: Phaser.Input.Keyboard.Key;
+            };
+        } else {
+            console.warn("Keyboard input is not available");
         }
     }
 
